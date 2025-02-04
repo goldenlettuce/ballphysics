@@ -2,13 +2,13 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <!-- This meta tag tells mobile browsers to set the viewport width to the device width -->
+  <!-- Ensures mobile browsers set viewport width to device width -->
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>BALL PHYSICS</title>
   <!-- Load the p5.js library -->
   <script src="https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.6.0/p5.min.js"></script>
   <style>
-    /* Remove default margins/padding and ensure full width/height for mobile */
+    /* Remove default margins/padding and ensure full viewport */
     html, body {
       margin: 0;
       padding: 0;
@@ -16,13 +16,14 @@
       height: 100%;
       width: 100%;
     }
-    /* Ensure the p5.js canvas fills its container */
+    /* Force the canvas to display as a block and push it down so it doesn't overlap the menu */
     canvas {
       display: block;
+      margin-top: 100px; /* Adjust this value if needed so the menu doesn't cover the sphere */
     }
     /* Minimalistic, Apple-inspired menu styling */
     #menu {
-      position: absolute;
+      position: fixed;
       top: 20px;
       left: 20px;
       width: 180px;
@@ -100,6 +101,10 @@
       #menu h2 {
         font-size: 16px;
       }
+      /* Increase canvas top margin on mobile so the menu doesn't overlap */
+      canvas {
+        margin-top: 120px;
+      }
     }
   </style>
 </head>
@@ -114,7 +119,7 @@
   </div>
 
   <script>
-    // Detect mobile device.
+    // Detect mobile device (for optimization)
     let isMobile = /Mobi|Android/i.test(navigator.userAgent);
 
     // ============================
@@ -145,7 +150,7 @@
       // Use HSB color mode for pastel/chromatic colors.
       colorMode(HSB, 360, 100, 100, 100);
       
-      // On mobile, slightly adjust the container radius.
+      // On mobile, adjust container radius for proportionality.
       containerRadius = min(width, height) * (isMobile ? 0.35 : 0.4);
       // Very light gravity.
       gravity = createVector(0, 0.005, 0);
