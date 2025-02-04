@@ -1,0 +1,330 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <!-- This meta tag tells mobile browsers to set the viewport width to the device width -->
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Snow Globe: Interactive Balls in a Rotating Sphere</title>
+  <!-- Load the p5.js library -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.6.0/p5.min.js"></script>
+  <style>
+    /* Remove default margins/padding and ensure full width/height responsiveness */
+    html, body {
+      margin: 0;
+      padding: 0;
+      overflow: hidden;
+    }
+    /* Force the p5.js canvas to fill its container responsively */
+    canvas {
+      display: block;
+      width: 100% !important;
+      height: auto !important;
+    }
+    /* Minimalistic, Apple-inspired menu styling */
+    #menu {
+      position: absolute;
+      top: 20px;
+      left: 20px;
+      width: 180px;
+      background: rgba(255, 255, 255, 0.85);
+      border-radius: 12px;
+      padding: 15px;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+      box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+      z-index: 10;
+    }
+    #menu h2 {
+      margin: 0 0 10px 0;
+      font-size: 18px;
+      color: #333;
+    }
+    #menu button {
+      width: 100%;
+      margin-bottom: 10px;
+      padding: 8px;
+      font-size: 14px;
+      border: none;
+      border-radius: 6px;
+      box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+      outline: none;
+      cursor: pointer;
+      background: #f9f9f9;
+    }
+    #menu button:hover {
+      background: #f0f0f0;
+    }
+    #menu label {
+      display: block;
+      margin-bottom: 5px;
+      color: #555;
+      font-size: 14px;
+    }
+    /* Custom styling for the slider */
+    #menu input[type="range"] {
+      width: 100%;
+      margin-bottom: 10px;
+      -webkit-appearance: none;
+      appearance: none;
+      height: 6px;
+      background: #ddd;
+      border-radius: 3px;
+      outline: none;
+    }
+    #menu input[type="range"]::-webkit-slider-thumb {
+      -webkit-appearance: none;
+      appearance: none;
+      width: 18px;
+      height: 18px;
+      background: #888;
+      border-radius: 50%;
+      cursor: pointer;
+      box-shadow: 0 2px 4px rgba(0,0,0,0.2);
+    }
+    #menu input[type="range"]::-moz-range-thumb {
+      width: 18px;
+      height: 18px;
+      background: #888;
+      border-radius: 50%;
+      cursor: pointer;
+      box-shadow: 0 2px 4px rgba(0,0,0,0.2);
+    }
+    /* Media query for smaller screens */
+    @media (max-width: 600px) {
+      #menu {
+        width: 90%;
+        left: 5%;
+        top: 10px;
+        padding: 10px;
+      }
+      #menu h2 {
+        font-size: 16px;
+      }
+    }
+  </style>
+</head>
+<body>
+  <!-- Menu Overlay -->
+  <div id="menu">
+    <h2>Settings</h2>
+    <button id="resetButton">Reset Simulation</button>
+    <label for="massSlider">Mass (Physics)</label>
+    <!-- Slider settings: the slider's native range is 1.0 to 2.0 -->
+    <input type="range" id="massSlider" min="1.0" max="2.0" step="0.01" value="1.5">
+  </div>
+
+  <script>
+    // ============================
+    // Physics Weight Slider Settings
+    // ============================
+    const SLIDER_MIN = 1.0;        // Slider left value (native)
+    const SLIDER_MAX = 2.0;        // Slider right value (native)
+    const SLIDER_DEFAULT = 1.5;    // Default slider value (middle)
+    // Mapping: when slider reads SLIDER_MIN → massFactor = PHYSICS_HEAVY (20.0)
+    //          when slider reads SLIDER_MAX → massFactor = PHYSICS_LIGHT (1.0)
+    const PHYSICS_HEAVY = 20.0;     // Heavy physics: balls accelerate slowly (massFactor high)
+    const PHYSICS_LIGHT = 1.0;     // Light physics: balls accelerate normally (massFactor low)
+
+    // ============================
+    // Global variables
+    // ============================
+    let balls = [];
+    const numBalls = 100;
+    let containerRadius;
+    let gravity;
+    let externalForce; // Global force from mouse shaking
+    let startAtBottom = true; // All balls start in the lower region
+    let massFactor = SLIDER_DEFAULT; // Default mass factor (will be remapped from slider)
+
+    function setup() {
+      createCanvas(windowWidth, windowHeight, WEBGL);
+      // Use HSB color mode for pastel/chromatic colors.
+      colorMode(HSB, 360, 100, 100, 100);
+      
+      containerRadius = min(width, height) * 0.4;
+      // Very light gravity.
+      gravity = createVector(0, 0.005, 0);
+      
+      externalForce = createVector(0, 0, 0);
+      
+      initBalls();
+      setupUI();
+    }
+    
+    // Initialize (or reset) the simulation’s balls.
+    function initBalls() {
+      balls = [];
+      // Use the golden angle to distribute colors pleasantly.
+      let nextHue = random(360);
+      const goldenAngle = 137.508;
+      for (let i = 0; i < numBalls; i++) {
+        let r = random(5, 12);
+        let pos = startAtBottom ? randomVectorAtBottom(containerRadius - r)
+                                : randomVectorInSphere(containerRadius - r);
+        // Gentle initial velocity.
+        let vel = createVector(random(-0.5, 0.5), random(-0.5, 0.5), random(-0.5, 0.5));
+        // Assign a pastel/chromatic color (unchanging).
+        let col = color(nextHue % 360, 60, 100, 100);
+        nextHue += goldenAngle;
+        balls.push(new Ball(pos, vel, r, col));
+      }
+      externalForce.set(0, 0, 0);
+    }
+    
+    // Setup UI event listeners.
+    function setupUI() {
+      const resetButton = document.getElementById("resetButton");
+      resetButton.addEventListener("click", resetSimulation);
+      
+      const massSlider = document.getElementById("massSlider");
+      massSlider.value = SLIDER_DEFAULT; // Ensure default is set.
+      massSlider.addEventListener("input", function() {
+        // Map the slider reading to a mass factor.
+        // When slider reads SLIDER_MIN → massFactor = PHYSICS_HEAVY (20.0)
+        // When slider reads SLIDER_MAX → massFactor = PHYSICS_LIGHT (1.0)
+        massFactor = map(parseFloat(this.value), SLIDER_MIN, SLIDER_MAX, PHYSICS_HEAVY, PHYSICS_LIGHT);
+      });
+    }
+    
+    // Reset simulation by reinitializing balls.
+    function resetSimulation() {
+      initBalls();
+    }
+
+    function draw() {
+      background(0, 0, 0);
+      
+      // Enable interactive orbit control (click-and-drag to rotate).
+      orbitControl();
+      // Slight auto-rotation for added dynamism.
+      rotateY(frameCount * 0.001);
+      
+      // Draw the container sphere as a semi-transparent wireframe.
+      noFill();
+      stroke(0, 0, 100, 50);
+      strokeWeight(1);
+      sphere(containerRadius);
+      
+      // Apply the external shake force to every ball.
+      for (let ball of balls) {
+        ball.applyForce(externalForce);
+      }
+      // Gradually decay the external shake force.
+      externalForce.mult(0.95);
+      if (externalForce.mag() > 0.1) {
+        externalForce.setMag(0.1);
+      }
+      
+      // Update, check collisions, and display each ball.
+      for (let ball of balls) {
+        ball.update();
+        ball.checkCollision();
+        ball.display();
+      }
+    }
+    
+    // Returns a random 3D vector uniformly distributed inside a sphere of the given radius.
+    function randomVectorInSphere(maxRadius) {
+      let v;
+      do {
+        v = createVector(random(-1, 1), random(-1, 1), random(-1, 1));
+      } while (v.mag() > 1);
+      v.normalize();
+      v.mult(random(0, maxRadius));
+      return v;
+    }
+    
+    // Returns a random 3D vector in the lower portion of the sphere.
+    function randomVectorAtBottom(maxRadius) {
+      let margin = 10;
+      let minY = 0.7 * containerRadius;
+      let maxY = containerRadius - margin;
+      let y = random(minY, maxY);
+      let maxXZ = sqrt(containerRadius * containerRadius - y * y);
+      let angle = random(TWO_PI);
+      let r = random(0, maxXZ);
+      let x = r * cos(angle);
+      let z = r * sin(angle);
+      return createVector(x, y, z);
+    }
+    
+    // Ball class: each ball has a position, velocity, radius, and a fixed color.
+    // It maintains a trail of previous positions.
+    class Ball {
+      constructor(pos, vel, r, col) {
+        this.pos = pos;
+        this.vel = vel;
+        this.r = r;
+        this.col = col;
+        this.trail = [];  // Array of p5.Vector positions.
+        this.maxTrailLength = 30;
+      }
+      
+      // Apply an external force to the ball, divided by massFactor.
+      applyForce(force) {
+        this.vel.add(p5.Vector.div(force, massFactor));
+      }
+      
+      update() {
+        // Apply light gravity (scaled by massFactor).
+        this.vel.add(p5.Vector.div(gravity, massFactor));
+        this.pos.add(this.vel);
+        
+        // Record the current position in the trail.
+        this.trail.push(this.pos.copy());
+        if (this.trail.length > this.maxTrailLength) {
+          this.trail.shift();
+        }
+      }
+      
+      // Ensure the ball remains inside the container sphere.
+      checkCollision() {
+        let d = this.pos.mag();
+        if (d + this.r > containerRadius) {
+          let n = this.pos.copy().normalize();
+          let vDotN = this.vel.dot(n);
+          this.vel.sub(p5.Vector.mult(n, 2 * vDotN));
+          this.pos = p5.Vector.mult(n, containerRadius - this.r);
+        }
+      }
+      
+      display() {
+        noStroke();
+        // Draw the trail as a series of small spheres with fading opacity.
+        for (let i = 0; i < this.trail.length; i++) {
+          let pos = this.trail[i];
+          let age = this.trail.length - 1 - i; // Newest point has age 0.
+          let alphaVal = 100 * exp(-age / 10);  // Exponential decay for opacity.
+          fill(hue(this.col), saturation(this.col), brightness(this.col), alphaVal);
+          let trailSize = map(age, 0, this.trail.length - 1, this.r, this.r * 0.3);
+          push();
+          translate(pos.x, pos.y, pos.z);
+          sphere(trailSize);
+          pop();
+        }
+        
+        // Draw the ball at full brightness.
+        noStroke();
+        fill(this.col);
+        push();
+        translate(this.pos.x, this.pos.y, this.pos.z);
+        sphere(this.r);
+        pop();
+      }
+    }
+    
+    // When the window is resized, adjust the canvas size and container radius.
+    function windowResized() {
+      resizeCanvas(windowWidth, windowHeight);
+      containerRadius = min(width, height) * 0.4;
+    }
+    
+    // When the mouse is dragged, convert the motion into a gentle shake force.
+    function mouseDragged() {
+      let dx = mouseX - pmouseX;
+      let dy = mouseY - pmouseY;
+      let force = createVector(dx, dy, 0).mult(0.005);
+      externalForce.add(force);
+    }
+  </script>
+</body>
+</html>
